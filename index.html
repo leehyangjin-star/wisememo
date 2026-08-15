@@ -137,13 +137,13 @@
     <div class="field"><label>오늘의 한 줄 기록</label><textarea id="i-log">가볍게 걸었더니 마음도 기분도 조금 나아져요.. ♥</textarea></div>
 
     <div class="field" style="margin-top:6px;">
-      <label>미리보기 배경 · 사진/영상 (저장엔 미포함)</label>
+      <label>배경 · 사진/영상 (아래 체크 시 저장에 포함)</label>
       <div class="bgrow">
         <input id="i-bg" type="file" accept="image/*,video/*">
         <button type="button" id="bg-reset" style="font-size:11px;border:1px solid #ddd;background:#f7f7f7;border-radius:8px;padding:6px 8px;cursor:pointer;">기본</button>
       </div>
     </div>
-    <label class="chk"><input type="checkbox" id="i-merge"> 저장할 때 이 배경까지 합쳐서 저장</label>
+    <label class="chk"><input type="checkbox" id="i-merge" checked> 저장할 때 이 배경까지 합쳐서 저장</label>
 
     <details>
       <summary>고정 문구 수정 (제목·설명·하단 문구)</summary>
@@ -157,7 +157,7 @@
 
     <button class="btn" id="save">🖼  이미지 저장</button>
     <button class="btn vid" id="save-vid" style="display:none;">🎬  영상으로 저장 (MP4)</button>
-    <p class="savenote">저장 이미지는 <b>배경 투명 · 판 반투명</b>으로 인스타 비율(예: 1080×1350)로 나옵니다.<br>
+    <p class="savenote">기본은 <b>배경까지 합쳐서</b> 저장돼요. 체크를 풀면 <b>배경 투명 · 판 반투명</b> PNG로 나옵니다.<br>
       배경에 <b>영상</b>을 올리면 영상 위에 판을 얹은 <b>MP4</b>로도 저장돼요 (최대 15초 · 녹화에 영상 길이만큼 걸립니다).</p>
   </div>
 
@@ -290,6 +290,8 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
 
 const DEFAULT_BG=getComputedStyle(g('stage')).backgroundImage;
 let bgObjUrl=null;
+/** 업로드된 배경 사진의 원본 이미지 — 저장 합성에만 쓰이고 미리보기는 CSS 배경이 담당한다 */
+let bgImg=null;
 function clearBgUrl(){ if(bgObjUrl){ URL.revokeObjectURL(bgObjUrl); bgObjUrl=null; } }
 function stopVid(){ const v=g('bgvid'); v.pause(); v.removeAttribute('src'); v.load(); v.style.display='none'; showVidSaveBtn(false); }
 g('i-bg').addEventListener('change',e=>{
@@ -297,15 +299,19 @@ g('i-bg').addEventListener('change',e=>{
   clearBgUrl(); bgObjUrl=URL.createObjectURL(f);
   if(f.type.startsWith('video')){
     g('stage').style.backgroundImage='none';
+    bgImg=null;
     const v=g('bgvid'); v.src=bgObjUrl; v.style.display='block'; v.play().catch(()=>{});
     // 영상 배경일 때만 MP4 저장 경로가 의미를 가지므로 이때만 버튼을 연다
     showVidSaveBtn(true);
   }else{
     stopVid(); g('stage').style.backgroundImage=`url("${bgObjUrl}")`;
+    // 저장 시 원본 해상도로 합성하려고 따로 들고 있는다 (CSS 배경은 캔버스에 직접 못 그린다)
+    const im=new Image(); im.onload=()=>{ bgImg=im; }; im.src=bgObjUrl;
   }
 });
 g('bg-reset').addEventListener('click',()=>{
-  stopVid(); clearBgUrl(); g('stage').style.backgroundImage=DEFAULT_BG; g('i-bg').value='';
+  stopVid(); clearBgUrl(); bgImg=null;
+  g('stage').style.backgroundImage=DEFAULT_BG; g('i-bg').value='';
 });
 
 let lastUrl=null,lastBlob=null,lastName='',lastType='image/png';
@@ -356,19 +362,88 @@ g('m-share').addEventListener('click',async()=>{
     else alert('이 브라우저는 공유 저장을 지원하지 않아요. 길게 눌러 저장해 주세요.');
   }catch(e){ console.error(e); }
 });
+/** CSS의 transparent는 캔버스에서 검정으로 보간돼 색이 죽는다 — 같은 색의 알파 0으로 끝낸다 */
+function addFadeStops(gr,rgb,stop){
+  gr.addColorStop(0,`rgb(${rgb})`);
+  gr.addColorStop(stop,`rgba(${rgb},0)`);
+  gr.addColorStop(1,`rgba(${rgb},0)`);
+}
+
+/**
+ * CSS radial-gradient 한 겹을 그린다.
+ * 캔버스 radial은 정원뿐이라, 단위원 공간으로 변환해 타원(120% 90%)을 만든다.
+ *
+ * @param {number[]} at  중심 위치 비율 [x,y]
+ * @param {number[]} rad 반지름 비율 [rx,ry]
+ */
+function paintRadial(ctx,size,at,rad,rgb,stop){
+  ctx.save();
+  ctx.translate(at[0]*size.w, at[1]*size.h);
+  ctx.scale(rad[0]*size.w, rad[1]*size.h);
+  const gr=ctx.createRadialGradient(0,0,0,0,0,1);
+  addFadeStops(gr,rgb,stop);
+  ctx.fillStyle=gr;
+  // 단위원 공간 기준 ±2면 캔버스 전체를 덮는다 (스톱 밖은 알파 0이라 칠해지지 않는다)
+  ctx.fillRect(-2,-2,4,4);
+  ctx.restore();
+}
+
+/** 바닥 레이어: linear-gradient(135deg) — 135deg는 좌상단→우하단 대각선 방향이다 */
+function paintBaseGradient(ctx,size){
+  const d=Math.SQRT1_2, L=d*(size.w+size.h);
+  const gr=ctx.createLinearGradient(size.w/2-d*L/2, size.h/2-d*L/2, size.w/2+d*L/2, size.h/2+d*L/2);
+  gr.addColorStop(0,'#b7a693'); gr.addColorStop(1,'#7f8f7c');
+  ctx.fillStyle=gr; ctx.fillRect(0,0,size.w,size.h);
+}
+
+/**
+ * 기본 배경을 캔버스에 직접 칠한다.
+ * html2canvas로 무대를 찍으면 transparent 스톱이 섞인 다중 radial-gradient가 어둡게 렌더링된다
+ * (좌상단 실측: 화면 197,179,161 / html2canvas 151,138,123 / 직접 칠하기 198,180,161).
+ * 값은 .stage의 background와 한 쌍이므로 CSS를 바꾸면 여기도 함께 고쳐야 한다.
+ */
+function paintDefaultBg(ctx,size){
+  paintBaseGradient(ctx,size);
+  paintRadial(ctx,size,[0.9,0.8],[1.2,0.9],'143,160,138',0.55);
+  paintRadial(ctx,size,[0.2,0.1],[1.2,0.9],'203,184,166',0.55);
+}
+
+/**
+ * 배경(영상 현재 프레임 · 업로드 사진 · 기본 그라데이션)을 목표 비율 캔버스에 cover로 채운다.
+ * .stage를 그대로 찍으면 무대가 레이아웃 컨테이너라 선택한 인스타 비율이 무시되므로,
+ * 배경을 소스로만 쓰고 크기는 항상 outSize()가 정한다.
+ */
+async function drawBackground(ctx,size){
+  const v=g('bgvid');
+  // 영상 배경 — 저장을 누른 순간의 프레임을 쓴다
+  if(v.style.display==='block' && v.videoWidth)
+    return drawCover(ctx,v,v.videoWidth,v.videoHeight,size.w,size.h);
+  // 사진 배경 — 원본을 직접 그려 무대 축소분만큼의 화질 손실을 피한다
+  if(bgImg && bgImg.naturalWidth)
+    return drawCover(ctx,bgImg,bgImg.naturalWidth,bgImg.naturalHeight,size.w,size.h);
+  paintDefaultBg(ctx,size);
+}
+
+/** 배경 위에 카드를 얹은 한 장을 목표 비율로 합성한다 (영상 배경이면 현재 프레임이 박힌다) */
+async function composeMerged(){
+  const size=outSize();
+  const overlay=await captureCard(size.w);
+  const cv=document.createElement('canvas');
+  cv.width=size.w; cv.height=size.h;
+  const ctx=cv.getContext('2d');
+  await drawBackground(ctx,size);
+  ctx.drawImage(overlay,0,0,size.w,size.h);
+  return cv;
+}
+
 g('save').addEventListener('click',async()=>{
   const btn=g('save'),orig=btn.textContent; btn.textContent='만드는 중...'; btn.disabled=true;
   try{
     if(document.fonts&&document.fonts.ready) await document.fonts.ready;
     fit();
-    let merge=g('i-merge').checked;
-    // html2canvas는 <video>의 재생 중 픽셀을 읽지 못한다 — 영상은 MP4 저장 버튼으로 유도
-    if(merge && g('bgvid').style.display==='block'){
-      merge=false;
-      alert('영상 배경은 한 장 이미지로 합쳐지지 않아요.\n영상째로 남기려면 아래 "영상으로 저장 (MP4)" 버튼을 써 주세요.\n지금은 판만 투명 PNG로 저장합니다.');
-    }
-    // 판만 저장할 때는 빈 캡처 검사를 거쳐 내용 없는 PNG가 나가는 것을 막는다
-    const canvas=merge?await captureEl(g('stage'),1080):await captureCard(1080);
+    const merge=g('i-merge').checked;
+    // 합치기는 목표 비율 캔버스에 직접 합성, 판만 저장은 카드 캡처를 그대로 사용
+    const canvas=merge?await composeMerged():await captureCard(1080);
     const name=`갱년기실험일지_DAY${dayTag()}${merge?'_배경합침':''}.png`;
     showResult(await toBlob(canvas),name,'image/png');
     // PC 편의를 위한 즉시 다운로드 — 모달은 모바일에서 길게 눌러 저장하는 용도로 함께 띄운다
