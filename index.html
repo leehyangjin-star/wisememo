@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>갱년기 실험일지 · 카드 생성기</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root{ --ink:#2b2b3a; --sub:#8a8a97; --line:#ececec; }
+  body{ font-family:'Pretendard','Apple SD Gothic Neo','Noto Sans KR',-apple-system,sans-serif;
+    background:#e9e6e2; color:var(--ink); padding:24px 16px 60px; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:1000px; margin:0 auto; display:grid; grid-template-columns:1fr; gap:28px; }
+  @media(min-width:920px){ .wrap{ grid-template-columns:380px 1fr; align-items:start; } }
+
+  /* 입력 패널 */
+  .panel{ background:#fff; border-radius:20px; padding:22px; box-shadow:0 6px 24px rgba(0,0,0,.05); }
+  @media(min-width:920px){ .panel{ position:sticky; top:24px; } }
+  .panel h2{ font-size:16px; margin-bottom:4px; }
+  .panel .hint{ font-size:12px; color:var(--sub); margin-bottom:16px; line-height:1.5; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12.5px; color:#555; margin-bottom:6px; font-weight:600; }
+  .field input[type=number], .field input[type=text], .field textarea{
+    width:100%; border:1px solid #e3e3e6; border-radius:10px; padding:10px 12px;
+    font-size:14px; font-family:inherit; color:var(--ink); background:#fafafa; }
+  .field input:focus, .field textarea:focus{ outline:none; border-color:#c9a0a0; background:#fff; }
+  .field textarea{ resize:vertical; min-height:44px; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .ratios{ display:flex; gap:6px; margin-bottom:16px; }
+  .ratios button{ flex:1; padding:9px 4px; border:1px solid #e0e0e4; background:#fafafa; border-radius:10px;
+    font-family:inherit; font-size:12px; font-weight:700; color:#666; cursor:pointer; line-height:1.3; }
+  .ratios button small{ display:block; font-size:10px; font-weight:500; color:#aaa; margin-top:2px; }
+  .ratios button.active{ background:#16161e; color:#fff; border-color:#16161e; }
+  .ratios button.active small{ color:rgba(255,255,255,.6); }
+  details{ margin-top:6px; border-top:1px solid var(--line); padding-top:8px; }
+  summary{ cursor:pointer; font-size:12.5px; color:#777; font-weight:600; list-style:none; padding:6px 0; }
+  summary::-webkit-details-marker{ display:none; } summary::before{ content:"⚙  "; }
+  .bgrow{ display:flex; align-items:center; gap:10px; margin:6px 0 4px; }
+  .bgrow input[type=file]{ font-size:12px; }
+  .chk{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:#555; margin-top:14px; cursor:pointer; }
+  .chk input{ width:16px; height:16px; }
+  .btn{ width:100%; margin-top:16px; border:none; cursor:pointer; background:#16161e; color:#fff;
+    font-family:inherit; font-weight:700; font-size:15px; padding:14px; border-radius:12px; transition:.15s; }
+  .btn:hover{ background:#2c2c3a; } .btn:active{ transform:translateY(1px); }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .btn.vid{ background:#2f7d4f; } .btn.vid:hover{ background:#3a9160; }
+  .savenote{ font-size:11.5px; color:#a7a7b0; text-align:center; margin-top:10px; line-height:1.5; }
+
+  /* 프리뷰 무대 */
+  .stage{ position:relative; display:flex; justify-content:center; align-items:center; padding:16px; border-radius:22px; overflow:hidden;
+    background:
+      radial-gradient(120% 90% at 20% 10%, #cbb8a6 0%, transparent 55%),
+      radial-gradient(120% 90% at 90% 80%, #8fa08a 0%, transparent 55%),
+      linear-gradient(135deg,#b7a693,#7f8f7c);
+    background-size:cover; background-position:center; }
+
+  /* ===== 고정 시그니처 판 (인스타 비율 틀) ===== */
+  #frame{ position:relative; z-index:1; width:440px; overflow:hidden; border-radius:30px;
+    background:rgba(15,15,22,0.52); border:1px solid rgba(255,255,255,0.13);
+    box-shadow:0 20px 50px rgba(0,0,0,0.25);
+    font-family:'Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif; color:#fff; }
+  #inner{ position:absolute; top:50%; left:50%; width:404px; transform:translate(-50%,-50%) scale(1); transform-origin:center; }
+
+  .brand{ font-size:18px; font-weight:700; color:#f2f2f5; margin-bottom:5px; }
+  .brand .flask{ margin-right:4px; }
+  .day{ font-size:48px; font-weight:900; letter-spacing:-.01em; line-height:1; color:#fff; }
+  .subhead{ font-size:17px; font-weight:700; color:rgba(255,255,255,0.6); margin-top:9px; }
+  .divider{ height:1px; background:rgba(255,255,255,0.13); margin:16px 0 10px; }
+
+  .body{ display:flex; gap:14px; align-items:stretch; }
+  .col-left{ flex:1.14; min-width:0; }
+  .col-right{ flex:0.86; min-width:0; display:flex; flex-direction:column; gap:11px; }
+
+  .metric{ display:flex; align-items:center; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.09); }
+  .metric:last-child{ border-bottom:none; }
+  .ic{ width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .ic svg{ width:22px; height:22px; }
+  .m-text{ margin-left:11px; flex:1; min-width:0; }
+  .m-title{ font-size:16.5px; font-weight:700; color:#fff; line-height:1.15; word-break:keep-all; }
+  .m-val{ font-weight:900; text-align:right; white-space:nowrap; margin-left:6px; }
+  .m-val .big{ font-size:23px; } .m-val .unit{ font-size:12.5px; font-weight:700; color:rgba(255,255,255,0.55); margin-left:2px; }
+
+  .note{ border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.05);
+    border-radius:14px; padding:14px 15px; flex:1; display:flex; flex-direction:column; }
+  .note-head{ display:flex; align-items:center; gap:7px; font-size:14px; font-weight:700; color:rgba(255,255,255,0.85); margin-bottom:7px; }
+  .note-head svg{ width:18px; height:18px; }
+  .note-body{ font-size:15.5px; color:rgba(255,255,255,0.85); line-height:1.5; word-break:keep-all; }
+
+  .foot{ text-align:center; margin-top:16px; }
+  .foot p{ font-size:13px; font-weight:700; color:rgba(255,255,255,0.5); line-height:1.65; }
+
+  /* 저장 모달 */
+  .modal-bg{ position:fixed; inset:0; background:rgba(0,0,0,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:99; }
+  .modal-bg.on{ display:flex; }
+  .modal{ background:#fff; border-radius:18px; padding:18px; max-width:420px; width:100%; max-height:90vh; overflow:auto; text-align:center; }
+  .modal h3{ font-size:16px; margin-bottom:6px; } .modal p{ font-size:12.5px; color:#777; line-height:1.55; margin-bottom:12px; }
+  .modal img{ width:100%; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.15); background:repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0/20px 20px; }
+  .modal .mbtns{ display:flex; gap:8px; margin-top:14px; }
+  .modal a.dl, .modal button.cl{ flex:1; padding:12px; border-radius:10px; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer; border:none; text-decoration:none; display:block; }
+  .modal a.dl{ background:#16161e; color:#fff; } .modal button.cl{ background:#eee; color:#444; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="panel">
+    <h2>🧪 오늘 수치 입력</h2>
+    <p class="hint">왼쪽 수치 · 오른쪽 기록 2단 구성이라 글씨가 큼직해요. 비율을 고르면 판 전체가 안 잘리게 들어갑니다.</p>
+
+    <div class="ratios" id="ratios">
+      <button data-r="1.25" class="active">피드<small>4:5</small></button>
+      <button data-r="1">정사각<small>1:1</small></button>
+      <button data-r="1.7778">스토리<small>9:16</small></button>
+    </div>
+
+    <div class="field"><label>DAY (며칠째)</label><input id="i-day" type="number" value="1" min="1"></div>
+    <div class="field"><label>통증 항목 이름</label><input id="i-backlabel" type="text" value="허리 통증"></div>
+    <div class="row2">
+      <div class="field"><label>통증 점수 (0~10)</label><input id="i-back" type="number" value="6" min="0" max="10"></div>
+      <div class="field"><label>피로도 (0~10)</label><input id="i-fatigue" type="number" value="7" min="0" max="10"></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="i-kneeon"> 무릎 통증을 따로 한 줄 추가</label>
+    <div class="row2" id="knee-row" style="display:none; margin-top:10px;">
+      <div class="field"><label>무릎 통증 (0~10)</label><input id="i-knee" type="number" value="3" min="0" max="10"></div>
+      <div class="field"><label>무릎 항목 이름</label><input id="i-kneelabel" type="text" value="무릎 통증"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>수면 시간 (시간)</label><input id="i-sleep" type="number" value="6.0" step="0.1"></div>
+      <div class="field"><label>걸음 수 (보)</label><input id="i-steps" type="number" value="4230"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>운동 시간 (분)</label><input id="i-exercise" type="number" value="20"></div>
+      <div class="field"><label>체온 (℃)</label><input id="i-temp" type="number" value="36.5" step="0.1"></div>
+    </div>
+    <div class="field"><label>오늘의 몸 상태</label><textarea id="i-body">몸이 무겁고 허리가 뻐근해요 :)</textarea></div>
+    <div class="field"><label>오늘의 한 줄 기록</label><textarea id="i-log">가볍게 걸었더니 마음도 기분도 조금 나아져요.. ♥</textarea></div>
+
+    <div class="field" style="margin-top:6px;">
+      <label>미리보기 배경 · 사진/영상 (저장엔 미포함)</label>
+      <div class="bgrow">
+        <input id="i-bg" type="file" accept="image/*,video/*">
+        <button type="button" id="bg-reset" style="font-size:11px;border:1px solid #ddd;background:#f7f7f7;border-radius:8px;padding:6px 8px;cursor:pointer;">기본</button>
+      </div>
+    </div>
+    <label class="chk"><input type="checkbox" id="i-merge"> 저장할 때 이 배경까지 합쳐서 저장</label>
+
+    <details>
+      <summary>고정 문구 수정 (제목·설명·하단 문구)</summary>
+      <div style="margin-top:12px;">
+        <div class="field"><label>브랜드 제목</label><input id="i-brand" type="text" value="갱년기 실험일지"></div>
+        <div class="field"><label>소제목</label><input id="i-subhead" type="text" value="오늘의 몸 체크"></div>
+        <div class="field"><label>하단 문구 1줄</label><input id="i-foot1" type="text" value="몸은 매일 조금씩 좋아집니다"></div>
+        <div class="field"><label>하단 문구 2줄</label><input id="i-foot2" type="text" value="기록하는 만큼 변화가 보입니다 🌱"></div>
+      </div>
+    </details>
+
+    <button class="btn" id="save">🖼  이미지 저장</button>
+    <button class="btn vid" id="save-vid" style="display:none;">🎬  영상으로 저장 (MP4)</button>
+    <p class="savenote">저장 이미지는 <b>배경 투명 · 판 반투명</b>으로 인스타 비율(예: 1080×1350)로 나옵니다.<br>
+      배경에 <b>영상</b>을 올리면 영상 위에 판을 얹은 <b>MP4</b>로도 저장돼요 (최대 15초 · 녹화에 영상 길이만큼 걸립니다).</p>
+  </div>
+
+  <div class="stage" id="stage">
+    <video id="bgvid" playsinline muted loop preload="auto" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none; z-index:0;"></video>
+    <div id="frame">
+      <div id="inner">
+        <div class="brand"><span class="flask">🧪</span><span id="c-brand">갱년기 실험일지</span></div>
+        <div class="day">DAY <span id="c-day">01</span></div>
+        <div class="subhead" id="c-subhead">오늘의 몸 체크</div>
+        <div class="divider"></div>
+        <div class="body">
+          <div class="col-left" id="metrics"></div>
+          <div class="col-right">
+            <div class="note">
+              <div class="note-head">
+                <svg viewBox="0 0 24 24" fill="#e88a96" stroke="#e88a96" stroke-width="1.5"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/></svg>
+                오늘의 몸 상태
+              </div>
+              <div class="note-body" id="c-body"></div>
+            </div>
+            <div class="note">
+              <div class="note-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#a9b6c9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+                오늘의 한 줄 기록
+              </div>
+              <div class="note-body" id="c-log"></div>
+            </div>
+          </div>
+        </div>
+        <div class="foot">
+          <p id="c-foot1"></p>
+          <p id="c-foot2"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3 id="m-title">이미지가 만들어졌어요</h3>
+    <p id="m-desc">아래 버튼으로 저장하거나, 이미지를 <b>길게 눌러(모바일)</b> / <b>우클릭(PC)</b> 하여 저장하세요.</p>
+    <img id="m-img" alt="생성된 카드">
+    <video id="m-vid" controls playsinline loop style="display:none; width:100%; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.15); background:#000;"></video>
+    <button class="sh" id="m-share" style="display:none;width:100%;padding:13px;border:none;border-radius:10px;font-size:14px;font-weight:700;font-family:inherit;background:#2f7d4f;color:#fff;cursor:pointer;margin-top:12px;">📤 휴대폰에 저장 / 공유</button>
+    <div class="mbtns">
+      <a class="dl" id="m-dl" download>💾 다운로드</a>
+      <button class="cl" id="m-close">닫기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ICONS = {
+  back:'<path d="M12 6 a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" fill="currentColor" stroke="none"/><path d="M9 21l3-6 3 6"/><path d="M6 9l6 2 6-2"/><path d="M12 11v4"/>',
+  fatigue:'<rect x="2" y="8" width="16" height="9" rx="2.5"/><path d="M22 12v2"/><path d="M5.5 11v3"/>',
+  sleep:'<path d="M12 3a6.5 6.5 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  steps:'<path d="M4 16v-2.4C4 11.5 3 10.5 3 8c0-2.7 1.5-6 4.5-6C9.4 2 10 3.8 10 5.5c0 3.1-2 5.7-2 8.7V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.4c0-2.1 1-3.1 1-5.6 0-2.7-1.5-6-4.5-6C14.6 6 14 7.8 14 9.5c0 3.1 2 5.7 2 8.7V20a2 2 0 1 0 4 0Z"/>',
+  exercise:'<line x1="10" x2="14" y1="2.5" y2="2.5"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
+  temp:'<path d="M14 14.76V4.5a2 2 0 0 0-4 0v10.26a4 4 0 1 0 4 0Z"/>',
+  knee:'<circle cx="8" cy="8" r="3"/><circle cx="16" cy="16" r="3"/><path d="M10.3 10.3 13.7 13.7"/>'
+};
+const FIXED = [
+  {key:'fatigue',  icon:'fatigue',  title:'피로도',  accent:'#eec063', bg:'#f3e5c2'},
+  {key:'sleep',    icon:'sleep',    title:'수면',    accent:'#8ea6e6', bg:'#dbe1f4'},
+  {key:'steps',    icon:'steps',    title:'걸음 수', accent:'#9fd06f', bg:'#dcecca'},
+  {key:'exercise', icon:'exercise', title:'운동',    accent:'#f0a568', bg:'#f8ddc1'},
+  {key:'temp',     icon:'temp',     title:'체온',    accent:'#6fc5c8', bg:'#cbe6e7'}
+];
+const g = id => document.getElementById(id);
+const inputs = ['day','backlabel','back','knee','kneelabel','fatigue','sleep','steps','exercise','temp','body','log','brand','subhead','foot1','foot2'];
+let ratio = 1.25;
+const BASE_W = 404, MAX_FRAME = 440, VPAD = 20;
+
+function fmtVal(key){
+  const v = g('i-'+key).value;
+  switch(key){
+    case 'back': case 'knee': case 'fatigue': return `<span class="big">${v}</span><span class="unit">/10</span>`;
+    case 'sleep':    return `<span class="big">${v}</span><span class="unit">시간</span>`;
+    case 'steps':    return `<span class="big">${Number(v).toLocaleString()}</span><span class="unit">보</span>`;
+    case 'exercise': return `<span class="big">${v}</span><span class="unit">분</span>`;
+    case 'temp':     return `<span class="big">${v}</span><span class="unit">℃</span>`;
+  }
+}
+function render(){
+  g('c-brand').textContent=g('i-brand').value;
+  g('c-day').textContent=String(g('i-day').value).padStart(2,'0');
+  g('c-subhead').textContent=g('i-subhead').value;
+  g('c-body').textContent=g('i-body').value;
+  g('c-log').textContent=g('i-log').value;
+  g('c-foot1').textContent=g('i-foot1').value;
+  g('c-foot2').textContent=g('i-foot2').value;
+  const list=[];
+  list.push({key:'back', icon:'back', title:g('i-backlabel').value, accent:'#e88a96', bg:'#f6d8dc'});
+  if(g('i-kneeon').checked)
+    list.push({key:'knee', icon:'knee', title:g('i-kneelabel').value, accent:'#d98ab0', bg:'#f1dbe6'});
+  list.push(...FIXED);
+  let html='';
+  list.forEach(m=>{
+    html+=`<div class="metric">
+      <div class="ic" style="background:${m.bg}"><svg viewBox="0 0 24 24" fill="none" stroke="${m.accent}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:${m.accent}">${ICONS[m.icon]}</svg></div>
+      <div class="m-text"><div class="m-title">${m.title}</div></div>
+      <div class="m-val" style="color:${m.accent}">${fmtVal(m.key)}</div></div>`;
+  });
+  g('metrics').innerHTML=html;
+  fit();
+}
+function fit(){
+  const stage=g('stage'), frame=g('frame'), inner=g('inner');
+  const availW = stage.clientWidth - 32;
+  const frameW = Math.min(MAX_FRAME, availW);
+  const frameH = Math.round(frameW*ratio);
+  frame.style.width=frameW+'px'; frame.style.height=frameH+'px';
+  const H0 = inner.offsetHeight;                       // 404폭 자연 높이
+  const s = Math.min(frameW/BASE_W, (frameH-VPAD*2)/H0);
+  inner.style.transform=`translate(-50%,-50%) scale(${s})`;
+}
+inputs.forEach(k=> g('i-'+k).addEventListener('input', render));
+g('i-kneeon').addEventListener('change', ()=>{ g('knee-row').style.display=g('i-kneeon').checked?'grid':'none'; render(); });
+g('ratios').addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  ratio=parseFloat(b.dataset.r);
+  [...g('ratios').children].forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); fit();
+});
+window.addEventListener('resize', fit);
+render();
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+
+const DEFAULT_BG=getComputedStyle(g('stage')).backgroundImage;
+let bgObjUrl=null;
+function clearBgUrl(){ if(bgObjUrl){ URL.revokeObjectURL(bgObjUrl); bgObjUrl=null; } }
+function stopVid(){ const v=g('bgvid'); v.pause(); v.removeAttribute('src'); v.load(); v.style.display='none'; showVidSaveBtn(false); }
+g('i-bg').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  clearBgUrl(); bgObjUrl=URL.createObjectURL(f);
+  if(f.type.startsWith('video')){
+    g('stage').style.backgroundImage='none';
+    const v=g('bgvid'); v.src=bgObjUrl; v.style.display='block'; v.play().catch(()=>{});
+    // 영상 배경일 때만 MP4 저장 경로가 의미를 가지므로 이때만 버튼을 연다
+    showVidSaveBtn(true);
+  }else{
+    stopVid(); g('stage').style.backgroundImage=`url("${bgObjUrl}")`;
+  }
+});
+g('bg-reset').addEventListener('click',()=>{
+  stopVid(); clearBgUrl(); g('stage').style.backgroundImage=DEFAULT_BG; g('i-bg').value='';
+});
+
+let lastUrl=null,lastBlob=null,lastName='',lastType='image/png';
+function closeModal(){
+  g('modal').classList.remove('on');
+  // 모달을 닫아도 영상은 계속 디코딩되므로 소스를 끊어 백그라운드 재생을 막는다
+  const mv=g('m-vid'); mv.pause(); mv.removeAttribute('src');
+  if(lastUrl){URL.revokeObjectURL(lastUrl);lastUrl=null;}
+}
+g('m-close').addEventListener('click',closeModal);
+g('modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeModal(); });
+function toBlob(c){ return new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('blob')), 'image/png')); }
+
+/** 파일명에 쓰는 DAY 표기 — 파일 정렬이 깨지지 않도록 2자리로 0을 채운다 */
+const dayTag = ()=>String(g('i-day').value).padStart(2,'0');
+
+/** canShare는 일부 브라우저에서 예외를 던져 그대로 두면 저장 흐름이 끊긴다 */
+function canShareFile(blob,name,type){
+  try{ return !!(navigator.canShare && navigator.canShare({files:[new File([blob],name,{type})]})); }
+  catch(e){ return false; }
+}
+
+/**
+ * 생성 결과(이미지 또는 영상)를 모달에 띄우고 다운로드·공유 경로를 준비한다.
+ * iOS는 <a download>로 사진 앱에 넣을 수 없어 공유 시트가 사실상 유일한 저장 경로다.
+ *
+ * @example showResult(blob, '카드.mp4', 'video/mp4');
+ */
+function showResult(blob,name,type){
+  if(lastUrl) URL.revokeObjectURL(lastUrl);
+  lastBlob=blob; lastName=name; lastType=type; lastUrl=URL.createObjectURL(blob);
+  const isVid=type.startsWith('video');
+  // 이미지/영상 프리뷰는 배타적으로 노출 — 둘 다 보이면 모달 높이가 두 배가 된다
+  g('m-img').style.display=isVid?'none':'block';
+  g('m-vid').style.display=isVid?'block':'none';
+  if(isVid) g('m-vid').src=lastUrl; else g('m-img').src=lastUrl;
+  g('m-title').textContent=isVid?'영상이 만들어졌어요':'이미지가 만들어졌어요';
+  g('m-desc').innerHTML=isVid
+    ? '아래 <b>다운로드</b>나 <b>공유</b> 버튼으로 저장하세요. 아이폰은 <b>공유 → 비디오 저장</b>이라야 사진 앱에 들어갑니다.'
+    : '아래 버튼으로 저장하거나, 이미지를 <b>길게 눌러(모바일)</b> / <b>우클릭(PC)</b> 하여 저장하세요.';
+  g('m-dl').href=lastUrl; g('m-dl').download=name;
+  g('m-share').style.display=canShareFile(blob,name,type)?'block':'none';
+  g('modal').classList.add('on');
+}
+g('m-share').addEventListener('click',async()=>{
+  try{ const file=new File([lastBlob],lastName,{type:lastType});
+    if(navigator.canShare&&navigator.canShare({files:[file]})) await navigator.share({files:[file],title:lastName});
+    else alert('이 브라우저는 공유 저장을 지원하지 않아요. 길게 눌러 저장해 주세요.');
+  }catch(e){ console.error(e); }
+});
+g('save').addEventListener('click',async()=>{
+  const btn=g('save'),orig=btn.textContent; btn.textContent='만드는 중...'; btn.disabled=true;
+  try{
+    if(document.fonts&&document.fonts.ready) await document.fonts.ready;
+    fit();
+    let merge=g('i-merge').checked;
+    // html2canvas는 <video>의 재생 중 픽셀을 읽지 못한다 — 영상은 MP4 저장 버튼으로 유도
+    if(merge && g('bgvid').style.display==='block'){
+      merge=false;
+      alert('영상 배경은 한 장 이미지로 합쳐지지 않아요.\n영상째로 남기려면 아래 "영상으로 저장 (MP4)" 버튼을 써 주세요.\n지금은 판만 투명 PNG로 저장합니다.');
+    }
+    // 판만 저장할 때는 빈 캡처 검사를 거쳐 내용 없는 PNG가 나가는 것을 막는다
+    const canvas=merge?await captureEl(g('stage'),1080):await captureCard(1080);
+    const name=`갱년기실험일지_DAY${dayTag()}${merge?'_배경합침':''}.png`;
+    showResult(await toBlob(canvas),name,'image/png');
+    // PC 편의를 위한 즉시 다운로드 — 모달은 모바일에서 길게 눌러 저장하는 용도로 함께 띄운다
+    const a=document.createElement('a'); a.href=lastUrl; a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){
+    alert('이미지를 만들지 못했어요. "배경 합치기"를 끄고 다시 시도하거나 크롬/사파리에서 열어 주세요.');
+    console.error(e);
+  }finally{ btn.textContent=orig; btn.disabled=false; }
+});
+
+/* ===== 배경 영상 + 카드 합성 MP4 저장 ===== */
+const FPS=30, BITRATE=8000000, MAX_REC_SEC=15;
+
+/** H.264는 짝수 해상도만 안전하다 — 홀수로 떨어지면 인코더가 거부하거나 1px이 잘린다 */
+const evenSize = n => Math.round(n/2)*2;
+
+/**
+ * 이 브라우저가 실제로 녹화 가능한 MP4 MIME을 고른다.
+ * Safari는 'video/mp4'만, Chrome 130+는 codecs 지정형이 필요한 경우가 있어 후보를 순회한다.
+ *
+ * @returns {string|null} 지원 MIME. WebM만 되는 Firefox는 null.
+ */
+function pickMp4Mime(){
+  if(typeof MediaRecorder==='undefined') return null;
+  const cands=['video/mp4','video/mp4;codecs=avc1','video/mp4;codecs=avc1.42E01E','video/mp4;codecs=h264'];
+  return cands.find(t=>{ try{ return MediaRecorder.isTypeSupported(t); }catch(e){ return false; } }) || null;
+}
+/** 브라우저 고정 특성이라 매번 물어볼 필요가 없어 로드 시 한 번만 판정한다 */
+const MP4_MIME = pickMp4Mime();
+
+/** 선택한 인스타 비율에 맞춘 출력 픽셀 크기 (가로 1080 고정) */
+function outSize(){ return { w:1080, h:evenSize(1080*ratio) }; }
+
+/**
+ * 미리보기의 object-fit:cover와 동일한 규칙으로 잘라 캔버스를 가득 채운다.
+ * 규칙이 어긋나면 저장본 구도가 화면에서 본 것과 달라진다.
+ */
+function drawCover(ctx,src,sw,sh,dw,dh){
+  const s=Math.max(dw/sw,dh/sh), w=sw*s, h=sh*s;
+  ctx.drawImage(src,(dw-w)/2,(dh-h)/2,w,h);
+}
+
+/**
+ * 캡처 직전 카드를 화면 안으로 들여놓는다.
+ * 모바일 폭에서는 저장 버튼까지 스크롤하면 카드가 화면 밖으로 밀려나 잘린 캡처가 나온다.
+ */
+async function bringCardIntoView(){
+  g('frame').scrollIntoView({block:'center'});
+  // 스크롤이 반영된 다음 프레임에 캡처해야 레이아웃이 확정된 상태를 찍는다
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+}
+
+/**
+ * 캡처 결과가 쓸 수 있는 상태인지 검사한다.
+ * 폭 붕괴(내용은 있으나 몇 픽셀로 찌그러짐)와 완전 투명을 모두 잡아야 한다 —
+ * 알파만 보면 4px짜리 캔버스가 정상으로 통과해 배경만 담긴 결과물이 나간다.
+ */
+function isBadCapture(cv,outW){
+  if(!cv || cv.width < outW*0.9 || cv.height < 2) return true;
+  const s=document.createElement('canvas'); s.width=32; s.height=32;
+  const c=s.getContext('2d'); c.drawImage(cv,0,0,32,32);
+  const d=c.getImageData(0,0,32,32).data;
+  for(let i=3;i<d.length;i+=4) if(d[i]>8) return false;
+  return true;
+}
+
+/**
+ * 캡처가 끝날 때까지 배경 <video>를 숨긴다.
+ * 문서에 보이는 video가 있으면 html2canvas가 폭 계산에 실패해 카드가 4px 너비로 찌그러진다
+ * (재생/일시정지 무관, onclone 제거로도 안 고쳐짐 — 실측 확인).
+ * display:none 상태에서도 디코딩은 계속되므로 이어지는 녹화 프레임 추출에는 영향이 없다.
+ */
+async function withVideoHidden(fn){
+  const v=g('bgvid'), prev=v.style.display, shown=prev!=='none';
+  if(shown) v.style.display='none';
+  try{ return await fn(); }
+  finally{ if(shown) v.style.display=prev; }
+}
+
+/**
+ * 지정한 요소를 가로 outW 픽셀 기준으로 캡처한다.
+ * scrollX/windowWidth 같은 렌더 영역 옵션은 넘기지 않는다 — 기본 동작에 맡기는 편이 안전하다.
+ * clientWidth는 1px 보더를 빼서 비율이 틀어지므로 실측 폭을 쓴다.
+ */
+async function captureEl(el,outW){
+  await bringCardIntoView();
+  const scale=outW/el.getBoundingClientRect().width;
+  return withVideoHidden(()=>html2canvas(el,{scale,backgroundColor:null,useCORS:true}));
+}
+
+/**
+ * 카드(#frame)를 출력 해상도의 투명 배경 캔버스로 렌더링한다.
+ * 녹화 중 카드는 고정이므로 루프 밖에서 한 번만 만들어 매 프레임 재사용한다.
+ * 깨진 캡처는 배경만 저장되는 결과로 이어지므로 조용히 넘기지 않고 즉시 끊는다.
+ */
+async function captureCard(outW){
+  const cv=await captureEl(g('frame'),outW);
+  if(isBadCapture(cv,outW)) throw new Error('card capture blank');
+  return cv;
+}
+
+/** 되감기가 반영된 뒤 녹화해야 첫 프레임이 직전 재생 위치로 찍히지 않는다 (seeked가 안 오는 코덱 대비 타임아웃 포함) */
+function seekStart(v){
+  return new Promise(res=>{
+    if(v.currentTime===0) return res();
+    v.addEventListener('seeked',res,{once:true});
+    v.currentTime=0;
+    setTimeout(res,400);
+  });
+}
+
+/**
+ * 한 프레임 합성 — 배경 영상 위에 카드를 덮는다.
+ * 카드가 반투명(rgba)이라 순서가 뒤바뀌면 배경이 판을 가려버린다.
+ */
+function drawFrame(ctx,overlay,size){
+  const v=g('bgvid');
+  ctx.clearRect(0,0,size.w,size.h);
+  if(v.videoWidth) drawCover(ctx,v,v.videoWidth,v.videoHeight,size.w,size.h);
+  ctx.drawImage(overlay,0,0,size.w,size.h);
+}
+
+/**
+ * 녹화 길이(dur)만큼 매 프레임 합성을 반복한다.
+ *
+ * @param {Function} onEnd dur 경과 시 호출되는 녹화 종료 트리거
+ */
+function drawLoop(ctx,overlay,size,dur,onTick,onEnd){
+  let start=0,raf=0;
+  const step=ts=>{
+    if(!start) start=ts;
+    const t=(ts-start)/1000;
+    drawFrame(ctx,overlay,size);
+    onTick(Math.min(t,dur),dur);
+    if(t>=dur){ cancelAnimationFrame(raf); onEnd(); return; }
+    raf=requestAnimationFrame(step);
+  };
+  raf=requestAnimationFrame(step);
+}
+
+/**
+ * 배경 영상 위에 카드를 얹어 MP4 Blob으로 녹화한다.
+ * MediaRecorder는 실시간 인코딩이라 결과물 길이만큼 대기 시간이 그대로 발생한다.
+ */
+async function recordMp4(overlay,onTick){
+  const v=g('bgvid'), size=outSize();
+  const cv=document.createElement('canvas');
+  cv.width=size.w; cv.height=size.h;
+  const ctx=cv.getContext('2d');
+  // 긴 영상은 잘라 녹화 — 스토리 15초 규격이자 Blob이 메모리를 잠식하는 것을 막는 상한
+  const raw=(isFinite(v.duration)&&v.duration>0)?v.duration:MAX_REC_SEC;
+  const dur=Math.min(raw,MAX_REC_SEC);
+  await seekStart(v);
+  await v.play();
+  return new Promise((res,rej)=>{
+    const rec=new MediaRecorder(cv.captureStream(FPS),{mimeType:MP4_MIME,videoBitsPerSecond:BITRATE});
+    const chunks=[];
+    rec.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+    rec.onerror=e=>rej(e.error||new Error('recorder'));
+    rec.onstop=()=>res(new Blob(chunks,{type:MP4_MIME}));
+    // 첫 프레임을 미리 채운다 — 빈 캔버스로 녹화를 시작하면 도입부에 검은 프레임이 섞인다
+    drawFrame(ctx,overlay,size);
+    rec.start();
+    drawLoop(ctx,overlay,size,dur,onTick,()=>rec.stop());
+  });
+}
+
+/**
+ * 영상 배경일 때만 MP4 저장 버튼을 노출한다.
+ * MP4를 못 만드는 브라우저(Firefox)에서는 잠긴 버튼으로 이유를 알리고 이미지 저장으로 유도한다.
+ */
+function showVidSaveBtn(on){
+  const b=g('save-vid');
+  b.style.display=on?'block':'none';
+  if(!on) return;
+  b.disabled=!MP4_MIME;
+  b.textContent=MP4_MIME?'🎬  영상으로 저장 (MP4)':'🎬  이 브라우저는 MP4 저장 미지원';
+}
+g('save-vid').addEventListener('click',async()=>{
+  const btn=g('save-vid'),orig=btn.textContent,v=g('bgvid');
+  // 코덱 미지원(예: 크롬 + 아이폰 HEVC 영상)이면 videoWidth가 0이라 검은 화면만 녹화된다
+  if(!v.videoWidth){
+    alert('이 브라우저가 배경 영상을 재생하지 못했어요.\n아이폰으로 찍은 영상(HEVC)은 사파리에서 열거나, MP4(H.264)로 변환해 올려 주세요.');
+    return;
+  }
+  btn.disabled=true;
+  try{
+    if(document.fonts&&document.fonts.ready) await document.fonts.ready;
+    fit();
+    btn.textContent='카드 준비 중...';
+    const overlay=await captureCard(outSize().w);
+    // 실시간 녹화라 진행 상황을 버튼에 표시하지 않으면 멈춘 것처럼 보인다
+    const blob=await recordMp4(overlay,(t,d)=>{ btn.textContent=`녹화 중 ${t.toFixed(1)} / ${d.toFixed(1)}초`; });
+    showResult(blob,`갱년기실험일지_DAY${dayTag()}_배경영상.mp4`,'video/mp4');
+  }catch(e){
+    // 카드가 비면 배경 영상만 담긴 파일이 나가므로 원인을 구분해 알린다
+    alert(e && e.message==='card capture blank'
+      ? '카드를 이미지로 옮기지 못했어요. 카드 미리보기가 화면에 보이는 상태에서 다시 눌러 주세요.'
+      : '영상을 만들지 못했어요. 다른 영상으로 시도하거나 크롬/사파리 최신 버전에서 열어 주세요.');
+    console.error(e);
+  }finally{
+    btn.textContent=orig; btn.disabled=false;
+    // 녹화용으로 되감았던 미리보기 재생을 되돌린다
+    v.play().catch(()=>{});
+  }
+});
+</script>
+</body>
+</html>
